@@ -11,7 +11,7 @@ import socket
 import threading
 import time
 
-VERSION = '1.0.1'
+VERSION = '1.0.2'
 UPDATE_EPOCH = 1
 REPO = 'zhanglx-kiko/GeekPulse'
 STATE = Path('/var/lib/geekpulse-updater')

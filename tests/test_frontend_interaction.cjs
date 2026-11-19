@@ -10,30 +10,130 @@ const source = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
 const section = (a, b) => { const start = source.indexOf(a); const end = source.indexOf(b, start); assert.ok(start >= 0 && end > start); return source.slice(start, end); };
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const turn = () => new Promise((resolve) => setImmediate(resolve));
-test('admin can confirm a release with enabled probes and an in-flight request', async () => {
-  const target = {tag:'v1.4.0', revision:'a'.repeat(40)}, requests = [], notices = [];
-  const state = {bootstrap:{version:'1.3.0'}, updateView:{latest:target, current:'1.3.0', available:true, managed:true},
-    probes:[{enabled:true}], probeRequests:new Map([['probe-id', {runId:'running-id'}]])};
-  const elements = new Map(); let consent = false;
-  const $ = id => { if (!elements.has(id)) elements.set(id, {}); return elements.get(id); };
-  const env = {state, $, confirm:text=>{notices.push(text); return consent;},
-    busy:(item,value)=>{item.disabled=value;}, refreshUpdates:async()=>{},
-    api:async(path, options)=>{requests.push([path, options.body.tag, options.body.revision]);}};
-  vm.runInNewContext(section('  function renderUpdates(', '  async function refreshUpdates()') +
-    section('  async function installUpdate()', '  function renderProbeList()') + 'globalThis.render=renderUpdates; globalThis.install=installUpdate;', env);
-  env.render({...state.updateView, operation:{phase:'installing',tag:target.tag}});
-  assert.equal($('installUpdate').disabled, true, 'A second upgrade must not start.');
-  env.render(state.updateView);
-  assert.equal($('installUpdate').hidden, false);
-  assert.equal($('installUpdate').disabled, false, 'An in-flight model request does not block an upgrade.');
-  await env.install();
-  assert.equal(requests.length, 0);
-  consent = true;
-  await env.install();
-  assert.deepEqual(requests, [['/admin/updates/install',target.tag,target.revision]]);
-  assert.match(notices.at(-1), /可能中断/);
-  assert.equal(state.probes[0].enabled, true);
+const updateTarget = { tag: 'v1.4.0', revision: 'a'.repeat(40) };
+const installedUpdate = { phase: 'installed', tag: updateTarget.tag, updated_at: 'new' };
+const updateView = { current: '1.3.0', revision: 'b'.repeat(40), source: 'ok', checked_at: 1, latest: updateTarget, available: true, managed: true, operation: null };
+async function refreshUpdate(f, changes = {}) {
+  const pending = f.ui.refreshUpdates();
+  assert.equal(f.requests.at(-1).url, '/admin/updates');
+  f.requests.at(-1).resolve({ ...updateView, ...changes });
+  await pending;
+}
+
+test('the update card has one action and upgrades require confirmation, even with running probes', async () => {
+  const f = modalFixture(), button = f.el('updateAction');
+  const markup = fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8');
+  assert.equal((markup.match(/id="updateAction"/g) || []).length, 1);
+  assert.doesNotMatch(markup, /id="(?:checkUpdates|installUpdate|reloadUpdate|releaseBadge)"/);
+  f.ui.state.probes[0].enabled = true;
+  f.ui.state.probeRequests.set('a', { runId: 'already-running' });
+  await refreshUpdate(f);
+  assert.equal(button.textContent, '升级到 v1.4.0');
+  f.ui.updateAction();
+  assert.equal(f.el('confirmCurrentVersion').textContent, 'v1.3.0');
+  assert.equal(f.el('confirmTargetVersion').textContent, 'v1.4.0');
+  assert.match(f.el('confirmDescription').textContent, /可能中断/);
+  assert.equal(f.document.activeElement, f.el('confirmCancel'));
+  f.ui.closeModal(f.el('confirmDialog')); f.flushCloses();
+  assert.equal(f.requests.length, 1);
+  f.ui.updateAction();
+  const submit = f.ui.submitConfirmation();
+  await f.ui.submitConfirmation();
+  assert.equal(f.requests.length, 2);
+  assert.equal(f.requests[1].url, '/admin/updates/install');
+  assert.equal(JSON.stringify(f.requests[1].options.body), JSON.stringify(updateTarget));
+  f.requests[1].resolve({ accepted: true });
+  await submit; f.flushCloses();
+  assert.equal(button.disabled, true);
+  assert.equal(f.reloads, 0, 'Acceptance is not proof of activation.');
+  assert.equal(f.ui.state.probes[0].enabled, true);
+  f.requests[2].resolve({ ...updateView, operation: { ...installedUpdate, phase: 'installing' } });
+  await turn();
+  assert.equal(button.textContent, '升级中…');
 });
+
+test('checking uses the same action and waits for a new release result', async () => {
+  const f = modalFixture(), button = f.el('updateAction');
+  await refreshUpdate(f, { available: false });
+  assert.equal(button.textContent, '检查更新');
+  f.ui.updateAction();
+  f.ui.updateAction();
+  assert.equal(f.requests.length, 2);
+  assert.equal(f.requests[1].url, '/admin/updates/check');
+  assert.equal(button.textContent, '检查中…');
+  f.requests[1].resolve({ accepted: true });
+  await turn();
+  f.requests[2].resolve({ ...updateView, available: false });
+  await turn();
+  assert.equal(button.disabled, true);
+  await refreshUpdate(f, { checked_at: 2 });
+  assert.equal(button.disabled, false);
+  assert.equal(button.textContent, '升级到 v1.4.0');
+});
+
+test('a changed release or unavailable upgrader invalidates the open confirmation', async () => {
+  for (const changed of [{ latest: { ...updateTarget, revision: 'c'.repeat(40) } }, { managed: false }, { operation: { phase: 'installing' } }]) {
+    const f = modalFixture();
+    await refreshUpdate(f);
+    f.ui.updateAction();
+    await refreshUpdate(f, changed);
+    await f.ui.submitConfirmation();
+    assert.equal(f.el('confirmDialog').open, true);
+    assert.match(f.el('confirmError').textContent, /状态已变化/);
+    assert.deepEqual(f.requests.map(req => req.url), ['/admin/updates', '/admin/updates']);
+  }
+});
+
+test('a lost response and restart stay under observation until the requested commit is installed', async () => {
+  const f = modalFixture();
+  await refreshUpdate(f);
+  f.ui.updateAction();
+  const submit = f.ui.submitConfirmation();
+  f.requests[1].reject(new Error('Connection lost'));
+  await submit; f.flushCloses();
+  f.requests[2].reject(new Error('Restarting'));
+  await turn();
+  assert.match(f.el('updateStatus').textContent, /等待 GeekPulse 恢复/);
+  assert.equal(f.el('updateAction').disabled, true);
+  assert.equal(f.lastDelay, 2000);
+  await refreshUpdate(f, { operation: installedUpdate, current: '1.4.0', revision: 'c'.repeat(40) });
+  await refreshUpdate(f, { operation: { ...installedUpdate, tag: 'v1.5.0' }, current: '1.4.0', revision: updateTarget.revision });
+  assert.equal(f.reloads, 0);
+  await refreshUpdate(f, { operation: installedUpdate, current: '1.4.0', revision: updateTarget.revision, available: false });
+  assert.equal(f.reloads, 1);
+  await f.ui.refreshUpdates();
+  assert.equal(f.reloads, 1);
+  assert.equal(f.requests.filter(req => req.options?.method === 'POST').length, 1);
+});
+
+test('rollback, upgrades by other pages and logout never reload this page', async () => {
+  const f = modalFixture();
+  await refreshUpdate(f, { operation: installedUpdate, current: '1.4.0', revision: updateTarget.revision, available: false });
+  assert.equal(f.reloads, 0);
+  const stale = { ...installedUpdate, phase: 'rolled_back', updated_at: 'old' };
+  await refreshUpdate(f, { operation: stale });
+  f.ui.updateAction();
+  const submit = f.ui.submitConfirmation();
+  f.requests[2].resolve({ accepted: true });
+  await submit;
+  f.requests[3].resolve({ ...updateView, operation: stale });
+  await turn();
+  assert.equal(f.el('updateAction').disabled, true, 'A previous rollback is not a result for this request.');
+  await refreshUpdate(f, { operation: { ...stale, updated_at: 'retry' } });
+  assert.equal(f.el('updateAction').disabled, false);
+  assert.match(f.el('updateStatus').textContent, /已恢复原版本/);
+  assert.equal(f.reloads, 0);
+  f.flushCloses(); f.ui.updateAction();
+  const toLogout = f.ui.submitConfirmation();
+  f.requests[5].resolve({ accepted: true });
+  await toLogout;
+  f.ui.showAuth();
+  f.requests[6].resolve({ ...updateView, operation: installedUpdate, current: '1.4.0', revision: updateTarget.revision });
+  await turn();
+  assert.equal(f.ui.state.updateAttempt, null);
+  assert.equal(f.reloads, 0);
+});
+
 function fixture() {
   const elements = new Map(), requests = [], storage = new Map(), observers = [], timers = new Map();
   let timerId = 0, reduced = false, dark = false;
@@ -213,10 +313,11 @@ test('theme changes rebuild visible artwork frames from memory without fetching 
 
 function modalFixture() {
   const elements = new Map(), closes = [], requests = [], rendered = [], errors = [], locks = new Set();
-  let maxOpen = 0, deferCatalog = false;
+  let maxOpen = 0, deferCatalog = false, reloads = 0, lastDelay = 0;
   const classList = (prefix) => ({ toggle(name, value) { if (value) locks.add(prefix + name); else locks.delete(prefix + name); } });
   const document = { activeElement: null, body: { classList: classList('body:') }, documentElement: { classList: classList('html:') } };
-  const node = (id) => ({ id, open: false, isConnected: true, innerHTML: '', textContent: '', hidden: false, disabled: false, scrollTop: 0, listeners: new Map(),
+  const node = (id) => ({ id, open: false, isConnected: true, innerHTML: '', textContent: '', hidden: false, disabled: false, dataset: {}, attributes: {}, scrollTop: 0, listeners: new Map(),
+    setAttribute(name, value) { this.attributes[name] = value; },
     addEventListener(type, fn) { if (!this.listeners.has(type)) this.listeners.set(type, []); this.listeners.get(type).push(fn); },
     emit(type, event = {}) { for (const fn of this.listeners.get(type) || []) fn({ target: this, ...event }); },
     showModal() { this.open = true; document.activeElement = this; maxOpen = Math.max(maxOpen, [...elements.values()].filter(el => el.open).length); },
@@ -242,7 +343,8 @@ function modalFixture() {
   document.getElementById = el;
   document.querySelector = selector => selector === 'dialog[open]' ? [...elements.values()].find(el => el.open) || null : null;
   document.querySelectorAll = selector => selector === 'dialog[open]' ? [...elements.values()].filter(el => el.open) : [];
-  const env = { document, URL, console,
+  const env = { document, URL, console, window: { location: { reload() { reloads++; } } },
+    setTimeout(_callback, delay) { lastDelay = delay; return 1; },
     FormData: class { constructor(form) { this.form = form; } get(name) { return this.form.elements.namedItem(name)?.value ?? null; } *[Symbol.iterator]() { for (const field of this.form.elements) if (!field.disabled && (field.type !== 'checkbox' || field.checked)) yield [field.name, field.value]; } },
     localStorage: { setItem() { throw new Error('Modal drafts must not be persisted.'); } },
     sessionStorage: { setItem() { throw new Error('Modal drafts must not be persisted.'); } },
@@ -261,12 +363,13 @@ function modalFixture() {
     section('  function showAuth(', '  async function api(') +
     section('  function syncModalScroll(', '  function updatePresets(') +
     section('  function updatePresets(', '  async function submitTest(') +
-    section('  function renderProbeList(', '  async function probeAction(') +
+    section('  function cancelRun(', '  async function loadProbes(') +
+    section('  function updateActive(', '  async function probeAction(') +
     section('  async function probeAction(', "  document.addEventListener('click'") +
-    'globalThis.ui={state,bindModal,openModal,closeModal,openHistory,openDetail,editProbe,saveProbe,showAuth,openConfirmation,submitConfirmation,requestRunDeletion,requestProbeDeletion,probeAction,loadProbeModels,syncProbeModelSelection,readProbeFields,defaultProbeName,renderProbeList};';
+    'globalThis.ui={state,bindModal,openModal,closeModal,openHistory,openDetail,editProbe,saveProbe,showAuth,openConfirmation,submitConfirmation,requestRunDeletion,requestProbeDeletion,probeAction,loadProbeModels,syncProbeModelSelection,readProbeFields,defaultProbeName,renderProbeList,updateAction,refreshUpdates,cancelRun};';
   vm.createContext(env); vm.runInContext(code, env);
   for (const id of ['historyDialog','detailDialog','probeDialog','confirmDialog']) env.ui.bindModal(el(id));
-  env.ui.state.bootstrap = { groups: [{ id: 1, name: 'Group' }], limits: { max_timeout_seconds: 900 }, presets: [
+  env.ui.state.bootstrap = { version: '1.3.0', user: { role: 'admin' }, groups: [{ id: 1, name: 'Group' }], limits: { max_timeout_seconds: 900 }, presets: [
     { id: 'candy', kind: 'reasoning', name: 'Candy', prompt: 'Fixed candy', expected_answer: '21' },
     { id: 'custom', kind: 'reasoning', name: 'Custom', prompt: '' }, { id: 'svg', kind: 'drawing', name: 'SVG', prompt: '<svg/>' }
   ] };
@@ -275,7 +378,7 @@ function modalFixture() {
   return { ui: env.ui, el, document, requests, rendered, errors, locks, advanced, field: name => fields.get(name), deferCatalog: () => { deferCatalog = true; },
     flushCloses() { while (closes.length) closes.shift()(); },
     outside(dialog, type, changes = {}) { dialog.emit(type, { button: 0, isPrimary: true, pointerId: 1, clientX: 50, clientY: 50, ...changes }); },
-    get maxOpen() { return maxOpen; }
+    get maxOpen() { return maxOpen; }, get reloads() { return reloads; }, get lastDelay() { return lastDelay; }
   };
 }
 

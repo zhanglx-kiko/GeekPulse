@@ -116,7 +116,7 @@ if (location.search) history.replaceState(null, '', location.pathname + location
     $('authMessage').textContent = message;
     $('userName').textContent = '';
     state.runCache.clear(); state.runSummaries.clear(); state.confirmation = null; state.recordsVersion++;
-    clearTimeout(state.updateTimer); state.updateView = null;
+    clearTimeout(state.updateTimer); state.updateView = null; state.updateAttempt = null; state.updateCheck = null;
     state.probeDrafts.clear(); state.historyReturn = null;
     if (typeof syncPreviews === 'function') syncPreviews();
     document.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
@@ -324,7 +324,7 @@ if (location.search) history.replaceState(null, '', location.pathname + location
       const stats = group.stats || {};
       const models = (group.models || []).filter((model) => !state.deletedProbes.has(String(model.probe_id)));
       const drawings = (group.drawing_models || []).filter((model) => !state.deletedProbes.has(String(model.probe_id))).map((model) => ({ ...model, history: (model.history || []).filter((run) => ['passed', 'failed', 'completed'].includes(run.status) && run.has_artifact && !isRunDeleted(run)) }));
-      return `<article class="card group-card"><div class="group-head"><div><div class="group-name"><h2>${html(group.name)}</h2>${multiplierBadge(group.display_multiplier)}</div><div class="group-meta">${integer(models.length)} 个答题探测${drawings.length ? ` · ${integer(drawings.length)} 个图片探测` : ''}</div></div></div>${models.length ? `<div class="group-metrics">${metric('渠道成功率', percent(stats.success_rate), 'group-metric')}${metric('平均首 T', seconds(stats.avg_ttft_ms), 'group-metric')}<span class="metric-label">近 ${state.hours} 小时</span></div><div class="group-body"><h3 class="group-section-title">模型检测 <span class="muted">最近 60 轮</span></h3>${models.map((model) => `<div class="model-row"><div class="model-title"><span class="model-name">${html(model.model)}</span><span class="model-effort">${html(model.effort || 'default')}</span><div class="model-summary"><span class="model-rate">不降智率 <strong>${percent(model.stats?.pass_rate)}</strong></span>${latestModelMetrics(model)}</div></div><div class="model-meta"><span>${html(model.name)}${model.enabled ? '' : ' · 已暂停'}</span><span>${integer(model.stats?.scored)} 次有效判定</span>${number(model.display_multiplier) !== number(group.display_multiplier) ? multiplierBadge(model.display_multiplier) : ''}</div>${historyStrip(model)}</div>`).join('')}</div>` : ''}${drawings.length ? `<div class="drawing-section"><h3 class="group-section-title">图片检测 <span class="muted">各探测最近 60 轮</span></h3>${drawings.map((model) => `<div class="drawing-probe"><div class="drawing-heading"><div><strong>${html(model.model)}</strong><span class="model-effort">${html(model.effort || 'default')}</span><span class="muted">${html(model.name)}${model.enabled ? '' : ' · 已暂停'}</span></div>${model.history?.length ? `<div class="carousel-controls"><button class="icon-button" data-action="carousel-prev" data-id="${html(model.probe_id)}" aria-label="查看较新图片">‹</button><button class="icon-button" data-action="carousel-next" data-id="${html(model.probe_id)}" aria-label="查看较早图片">›</button></div>` : ''}</div>${model.history?.length ? `<div class="artwork-carousel" data-carousel="${html(model.probe_id)}" tabindex="0" role="region" aria-label="${html(model.model)} 最近 60 轮图片，可左右滚动">${model.history.map((run) => artworkCard(run, true)).join('')}</div>` : empty('暂无图片')}</div>`).join('')}</div>` : ''}</article>`;
+      return `<article class="card group-card"><div class="group-head"><div><div class="group-name"><h2>${html(group.name)}</h2>${multiplierBadge(group.display_multiplier)}</div><div class="group-meta">${integer(models.length)} 个答题探测${drawings.length ? ` · ${integer(drawings.length)} 个图片探测` : ''}</div></div></div>${models.length ? `<div class="group-metrics">${metric('渠道成功率', percent(stats.success_rate), 'group-metric')}${metric('平均首 T', seconds(stats.avg_ttft_ms), 'group-metric')}<span class="metric-label group-meter-window">近 ${state.hours} 小时</span></div><div class="group-body"><h3 class="group-section-title">模型检测 <span class="muted">最近 60 轮</span></h3>${models.map((model) => `<div class="model-row"><div class="model-title"><span class="model-name">${html(model.model)}</span><span class="model-effort">${html(model.effort || 'default')}</span><div class="model-summary"><span class="model-rate">不降智率 <strong>${percent(model.stats?.pass_rate)}</strong></span>${latestModelMetrics(model)}</div></div><div class="model-meta"><span>${html(model.name)}${model.enabled ? '' : ' · 已暂停'}</span><span>${integer(model.stats?.scored)} 次有效判定</span>${number(model.display_multiplier) !== number(group.display_multiplier) ? multiplierBadge(model.display_multiplier) : ''}</div>${historyStrip(model)}</div>`).join('')}</div>` : ''}${drawings.length ? `<div class="drawing-section"><h3 class="group-section-title">图片检测 <span class="muted">各探测最近 60 轮</span></h3>${drawings.map((model) => `<div class="drawing-probe"><div class="drawing-heading"><div><strong>${html(model.model)}</strong><span class="model-effort">${html(model.effort || 'default')}</span><span class="muted">${html(model.name)}${model.enabled ? '' : ' · 已暂停'}</span></div>${model.history?.length ? `<div class="carousel-controls"><button class="icon-button" data-action="carousel-prev" data-id="${html(model.probe_id)}" aria-label="查看较新图片">‹</button><button class="icon-button" data-action="carousel-next" data-id="${html(model.probe_id)}" aria-label="查看较早图片">›</button></div>` : ''}</div>${model.history?.length ? `<div class="artwork-carousel" data-carousel="${html(model.probe_id)}" tabindex="0" role="region" aria-label="${html(model.model)} 最近 60 轮图片，可左右滚动">${model.history.map((run) => artworkCard(run, true)).join('')}</div>` : empty('暂无图片')}</div>`).join('')}</div>` : ''}</article>`;
     }).join('') : empty('暂无探测配置');
     observePreviews($('groupGrid'));
   }
@@ -502,7 +502,9 @@ if (location.search) history.replaceState(null, '', location.pathname + location
   function renderRun(target, run, detail = false) {
     const duration = terminal(run.status) && number(run.duration_ms) !== null ? `<span class="result-duration">耗时 ${html(seconds(run.duration_ms))}</span>` : '';
     const pill = run.kind === 'drawing' && run.status === 'completed' ? '<span class="status-pill completed">已完成</span>' : statusPill(run.status);
-    target.innerHTML = `<div class="result-banner"><span class="result-model">${html(run.model || '测试任务')}</span><div class="result-status">${pill}${duration}</div></div>${detail ? `<div class="detail-meta"><span>${html(time(run.created_at))}</span>${run.group_name ? `<span>${html(run.group_name)}</span>` : ''}</div>` : ''}${!terminal(run.status) ? `<div class="run-progress"><div class="progress-title"><span class="spinner"></span><span>${run.status === 'queued' ? '等待执行' : '正在等待模型返回'}</span></div></div>` : ''}${run.kind === 'drawing' ? '' : resultMetrics(run)}${run.error_message ? `<p class="form-error">${html(run.error_message)}</p>` : ''}${run.artifact_html ? '<div data-artifact></div>' : ''}${run.output_text ? `<div class="output-head"><h3>模型输出</h3><button class="button ghost small" data-action="copy-output" data-id="${html(run.id)}">复制</button></div><pre class="output">${html(run.output_text)}</pre>` : terminal(run.status) ? '<p class="empty-output">无输出内容</p>' : ''}${detail ? runParameters(run) : ''}`;
+    const metadata = detail && (run.created_at || run.group_name) ? `<div class="detail-meta">${run.created_at ? `<span>${html(time(run.created_at))}</span>` : ''}${run.group_name ? `<span>${html(run.group_name)}</span>` : ''}</div>` : '';
+    const model = `<span class="result-model">${html(run.model || '测试任务')}</span>`;
+    target.innerHTML = `<div class="result-banner">${detail ? `<div class="detail-identity">${model}${metadata}</div>` : model}<div class="result-status">${pill}${duration}</div></div>${!terminal(run.status) ? `<div class="run-progress"><div class="progress-title"><span class="spinner"></span><span>${run.status === 'queued' ? '等待执行' : '正在等待模型返回'}</span></div></div>` : ''}${run.kind === 'drawing' ? '' : resultMetrics(run)}${run.error_message ? `<p class="form-error">${html(run.error_message)}</p>` : ''}${run.artifact_html ? '<div data-artifact></div>' : ''}${run.output_text ? `<div class="output-head"><h3>模型输出</h3><button class="button ghost small" data-action="copy-output" data-id="${html(run.id)}">复制</button></div><pre class="output">${html(run.output_text)}</pre>` : terminal(run.status) ? '<p class="empty-output">无输出内容</p>' : ''}${detail ? runParameters(run) : ''}`;
     prunePreviews();
     if (run.artifact_html) trackPreview(target.querySelector('[data-artifact]'), { artifact: run.artifact_html, title: run.model + ' 绘图结果', large: true });
   }
@@ -524,13 +526,26 @@ if (location.search) history.replaceState(null, '', location.pathname + location
     state.confirmation = { ...options, pending: false };
     $('confirmTitle').textContent = options.title;
     $('confirmDescription').textContent = options.description;
-    $('confirmName').textContent = options.name;
+    const upgrading = Boolean(options.versions);
+    const dialog = $('confirmDialog');
+    dialog.dataset.tone = upgrading ? 'update' : 'danger';
+    dialog.setAttribute('aria-describedby', (upgrading ? 'confirmVersions' : 'confirmObject') + ' confirmDescription');
+    $('confirmDeleteIcon').hidden = Boolean(options.symbol);
+    $('confirmSymbol').hidden = !options.symbol;
+    $('confirmSymbol').textContent = options.symbol || '';
+    $('confirmVersions').hidden = !upgrading;
+    $('confirmCurrentVersion').textContent = options.versions?.current || '';
+    $('confirmTargetVersion').textContent = options.versions?.target || '';
+    $('confirmObject').hidden = upgrading;
+    $('confirmName').textContent = options.name || '';
     $('confirmMeta').textContent = options.meta || '';
     $('confirmMeta').hidden = !options.meta;
+    $('confirmSubmit').className = 'button ' + (upgrading ? 'primary' : 'danger-solid');
+    $('confirmCancel').textContent = options.cancelLabel || '取消';
     $('confirmSubmit').textContent = options.label;
     $('confirmError').textContent = ''; $('confirmError').hidden = true;
     busy($('confirmSubmit'), false); busy($('confirmCancel'), false);
-    openModal($('confirmDialog'), opener);
+    openModal(dialog, opener);
     $('confirmCancel').focus({ preventScroll: true });
   }
   async function submitConfirmation() {
@@ -538,7 +553,7 @@ if (location.search) history.replaceState(null, '', location.pathname + location
     if (!confirmation || confirmation.pending || state.authExpired) return;
     confirmation.pending = true;
     busy($('confirmSubmit'), true); busy($('confirmCancel'), true);
-    $('confirmSubmit').textContent = '正在删除…';
+    $('confirmSubmit').textContent = confirmation.pendingLabel || '正在删除…';
     $('confirmError').textContent = ''; $('confirmError').hidden = true;
     try {
       await confirmation.execute();
@@ -546,7 +561,7 @@ if (location.search) history.replaceState(null, '', location.pathname + location
       confirmation.pending = false; closeModal($('confirmDialog'));
     } catch (error) {
       if (state.confirmation !== confirmation || state.authExpired) return;
-      $('confirmError').textContent = error.message || '删除未完成，请重试。';
+      $('confirmError').textContent = error.message || '操作未完成，请重试。';
       $('confirmError').hidden = false;
     } finally {
       if (state.confirmation === confirmation) {
@@ -583,7 +598,7 @@ if (location.search) history.replaceState(null, '', location.pathname + location
     }
     const suspended = dialog.id === 'historyDialog' && Boolean(state.historyReturn);
     syncModalScroll();
-    if (!suspended && !state.authExpired && opener?.isConnected) opener.focus({ preventScroll: true });
+    if (!suspended && !state.authExpired && opener?.isConnected && !opener.disabled && !opener.hidden) opener.focus({ preventScroll: true });
     else if (!suspended && !state.authExpired && fallbackFocus?.isConnected) fallbackFocus.focus({ preventScroll: true });
   }
   function bindModal(dialog) {
@@ -616,9 +631,10 @@ if (location.search) history.replaceState(null, '', location.pathname + location
   function openHistory(id) {
     const model = state.dashboard?.groups.flatMap((group) => group.models || []).find((item) => String(item.probe_id) === String(id));
     if (!model) return;
-    $('historyTitle').textContent = model.model + ' · 最近运行';
+    $('historyModel').textContent = model.model;
     $('historyContent').innerHTML = runRows([...(model.history || [])].filter((run) => ['passed', 'failed', 'completed'].includes(run.status)).reverse());
     openModal($('historyDialog'));
+    $('historyContent').scrollTop = 0;
   }
   function updatePresets(form, selected, applyDefaults = false) {
     const kind = formField(form, 'kind').value;
@@ -766,13 +782,21 @@ if (location.search) history.replaceState(null, '', location.pathname + location
       if (error.code === 'run_not_found') { state.currentRun = null; savePendingRequest(null); $('cancelRun').hidden = true; }
     } finally { state.polling = false; }
   }
-  async function cancelRun() {
-    if ($('cancelRun').disabled || !state.currentRun || terminal(state.currentRun.status)) return;
-    if (!confirm('取消当前任务？已产生的上游费用无法撤销。')) return;
-    busy($('cancelRun'), true);
-    try { await api('/runs/' + encodeURIComponent(state.currentRun.id) + '/cancel', { method: 'POST', body: {} }); toast('已提交取消'); }
-    catch (error) { toast(error.message); }
-    finally { busy($('cancelRun'), false); }
+  function cancelRun() {
+    const run = state.currentRun;
+    const button = $('cancelRun');
+    if (button.disabled || !run || terminal(run.status)) return;
+    openConfirmation({
+      title: '取消当前任务？', cancelLabel: '保留任务', label: '取消任务', pendingLabel: '正在取消…', symbol: '!',
+      name: run.model || '测试任务', description: '已产生的上游费用无法撤销。',
+      execute: async () => {
+        if (state.currentRun?.id !== run.id || terminal(state.currentRun.status)) {
+          throw new Error('这项任务已结束。');
+        }
+        await api('/runs/' + encodeURIComponent(run.id) + '/cancel', { method: 'POST', body: {} });
+        if (!state.authExpired) toast('已提交取消');
+      }
+    }, button);
   }
 
   async function loadProbes() {
@@ -788,60 +812,147 @@ if (location.search) history.replaceState(null, '', location.pathname + location
     } catch (error) { if (sequence === state.probesSequence) showError($('probeList'), error, 'probes'); }
     finally { if (sequence === state.probesSequence) busy($('refreshProbes'), false); syncTestButtons(); }
   }
-  function renderUpdates(view) {
-    const op = view.operation, active = ['verifying', 'installing'].includes(op?.phase);
-    const messages = { verifying: '正在校验版本和程序文件', installing: '正在切换版本并检查服务', installed: '升级成功', rolled_back: '升级检查失败，已恢复原版本' };
+  function updateActive(view) {
+    return ['verifying', 'installing'].includes(view?.operation?.phase);
+  }
+  function updateTarget(view) {
+    return view?.available && view.managed ? view.latest : null;
+  }
+  function renderUpdates() {
+    const view = state.updateView;
+    const target = updateTarget(view);
+    const newer = view?.available && view.latest;
+    const op = view?.operation;
+    const upgrading = Boolean(state.updateAttempt || updateActive(view) || state.updateReloading);
+    const checking = Boolean(state.updateCheck || view?.source === 'checking');
+    const action = $('updateAction');
+    busy(action, upgrading || checking);
+    action.className = 'button small ' + (target || upgrading ? 'primary' : 'secondary');
+    action.textContent = state.updateReloading ? '正在刷新…' : upgrading ? '升级中…' : checking ? '检查中…' : target ? '升级到 ' + target.tag : '检查更新';
+    $('adminUpdateDot').hidden = !newer || upgrading;
+    $('adminUpdateHint').textContent = newer && !upgrading ? '，有可用更新' : '';
+    $('updateCurrent').textContent = '当前 v' + (view?.current || state.bootstrap.version);
+
+    const messages = { verifying: '正在校验版本和程序文件。', installing: '正在切换版本并检查服务。', rolled_back: '升级检查失败，已恢复原版本。' };
     const reasons = { release_changed: '可用版本已变化，请重新检查。', manual_upgrade: '此版本需要运维手动升级。', local_changes: '已安装文件与发布版本不一致，请联系运维。', manual_recovery: '升级需要运维恢复，请检查升级器状态。', interrupted: '上次升级已中断，请重新检查。' };
-    const newer = view.available && view.latest;
-    const update = $('installUpdate'), badge = $('releaseBadge');
-    badge.hidden = !newer;
-    badge.textContent = newer ? '有新版本 ' + view.latest.tag : '';
-    update.hidden = !newer || !view.managed;
-    update.disabled = active || state.updateSubmitting || Date.now() < (state.updateAckUntil || 0);
-    update.textContent = newer ? '升级到 ' + view.latest.tag : '升级';
-    const status = view.source === 'unavailable' ? '暂时无法从 GitHub 检查版本' : view.source === 'checking' ? '正在检查 GitHub' : newer ? '可用版本 ' + view.latest.tag : view.latest ? '当前没有更高的稳定版' : '仓库尚无稳定发布';
-    const operation = op?.phase === 'failed' ? reasons[op.reason] || '升级未完成，请检查升级器后重试。' : messages[op?.phase];
-    $('updateStatus').textContent = ['当前 v' + view.current, status, newer && !view.managed ? '升级器未就绪，请检查 geekpulse-updater.service。' : '', operation && op.tag ? op.tag + ' ' + operation : ''].filter(Boolean).join(' · ');
-    $('reloadUpdate').hidden = view.current === state.bootstrap.version;
-    return active;
+    let status = state.updateError;
+    if (!status) {
+      if (state.updateReloading) status = '升级成功，正在刷新页面。';
+      else if (updateActive(view)) status = messages[op.phase];
+      else if (state.updateAttempt) status = '正在确认升级状态。';
+      else if (checking) status = '正在检查稳定版。';
+      else if (op?.phase === 'failed') status = reasons[op.reason] || '升级未完成，请检查升级器后重试。';
+      else if (op?.phase === 'rolled_back') status = messages.rolled_back;
+      else if (!view) status = '正在读取版本信息。';
+      else if (view.source === 'unavailable') status = '暂时无法从 GitHub 检查版本。';
+      else if (newer && !view.managed) status = `发现 ${view.latest.tag}，升级器未就绪。请检查 geekpulse-updater.service。`;
+      else if (newer) status = '有新版本可用。';
+      else status = view.latest ? '已是最新稳定版。' : '仓库尚无稳定发布。';
+    }
+    const statusNode = $('updateStatus');
+    const warning = state.updateError || (!upgrading && !checking && ['failed', 'rolled_back'].includes(op?.phase));
+    statusNode.dataset.tone = warning ? 'warning' : 'neutral';
+    if (statusNode.textContent !== status) statusNode.textContent = status;
+  }
+  function reconcileUpdate(view) {
+    const check = state.updateCheck;
+    if (check && !check.submitting && (view.checked_at !== check.checkedAt || Date.now() >= check.until)) {
+      state.updateCheck = null;
+    }
+    const attempt = state.updateAttempt;
+    if (!attempt) return;
+    const op = view.operation;
+    const matching = op?.tag === attempt.tag;
+    if (matching && op.phase === 'installed' && 'v' + view.current === attempt.tag && view.revision === attempt.revision) {
+      state.updateAttempt = null;
+      state.updateReloading = true;
+      renderUpdates();
+      if (!state.pageHidden) window.location.reload();
+    } else if (matching && op.updated_at !== attempt.previousStatusAt && ['failed', 'rolled_back'].includes(op.phase)) {
+      state.updateAttempt = null;
+    } else if (!attempt.submitting && !updateActive(view) && Date.now() >= attempt.until) {
+      state.updateAttempt = null;
+      state.updateError = '未能确认升级结果，请核对当前版本和升级器状态。';
+    }
   }
   async function refreshUpdates() {
-    if (state.updateReading || state.authExpired || state.bootstrap?.user.role !== 'admin') return;
-    clearTimeout(state.updateTimer); state.updateReading = true;
-    let active = false;
+    if (state.updateReading || state.updateReloading || state.authExpired || state.bootstrap?.user.role !== 'admin') return;
+    clearTimeout(state.updateTimer);
+    state.updateReading = true;
     try {
       const view = await api('/admin/updates');
       if (state.authExpired) return;
       state.updateView = view;
-      active = renderUpdates(view);
+      state.updateError = '';
+      reconcileUpdate(view);
     } catch (error) {
+      if (state.authExpired) return;
       state.updateView = null;
-      $('installUpdate').disabled = true;
-      $('updateStatus').textContent = error.message;
+      state.updateError = state.updateAttempt ? '连接暂时中断，正在等待 GeekPulse 恢复。' : error.message;
     } finally {
       state.updateReading = false;
-      if (!state.authExpired && !state.pageHidden) state.updateTimer = setTimeout(refreshUpdates, active || Date.now() < (state.updateWatchUntil || 0) ? 2000 : 60000);
+      if (!state.authExpired && !state.pageHidden && !state.updateReloading) {
+        renderUpdates();
+        const fast = state.updateCheck || state.updateAttempt || updateActive(state.updateView) || state.updateView?.source === 'checking';
+        state.updateTimer = setTimeout(refreshUpdates, fast ? 2000 : 60000);
+      }
     }
   }
   async function checkUpdates() {
-    if ($('checkUpdates').disabled) return;
-    busy($('checkUpdates'), true);
-    try { await api('/admin/updates/check', { method: 'POST', body: {} }); state.updateWatchUntil = Date.now() + 45000; await refreshUpdates(); }
-    catch (error) { $('updateStatus').textContent = error.message; }
-    finally { busy($('checkUpdates'), false); }
+    const check = { checkedAt: state.updateView.checked_at, submitting: true, until: Date.now() + 45000 };
+    state.updateCheck = check;
+    state.updateError = '';
+    renderUpdates();
+    try {
+      await api('/admin/updates/check', { method: 'POST', body: {} });
+      check.submitting = false;
+      await refreshUpdates();
+    } catch (error) {
+      if (state.authExpired) return;
+      state.updateCheck = null;
+      state.updateError = error.message;
+      renderUpdates();
+    }
   }
-  async function installUpdate() {
-    const target = state.updateView?.latest;
-    if (!target || $('installUpdate').disabled || state.updateSubmitting || !state.updateView.managed || !state.updateView.available) return;
-    if (!confirm('升级到 ' + target.tag + '？监控不用暂停。GeekPulse 将短暂重启，正在运行的测试可能中断，不会自动重试。')) return;
-    state.updateSubmitting = true;
-    busy($('installUpdate'), true);
-    state.updateWatchUntil = Date.now() + 90000;
+  function updateAction() {
+    const button = $('updateAction');
+    if (button.disabled || state.authExpired || state.bootstrap?.user.role !== 'admin') return;
+    const view = state.updateView;
+    if (!view) { refreshUpdates(); return; }
+    const target = updateTarget(view);
+    if (!target) { checkUpdates(); return; }
+    openConfirmation({
+      title: '升级 GeekPulse', label: '确认升级', pendingLabel: '正在提交…', symbol: '↑',
+      versions: { current: 'v' + view.current, target: target.tag }, fallbackFocus: $('updateTitle'),
+      description: '切换时 GeekPulse 会短暂重启。正在运行的测试可能中断，且不会自动重试。',
+      execute: () => installUpdate(target, view.revision)
+    }, button);
+  }
+  async function installUpdate(target, fromRevision) {
+    const view = state.updateView;
+    const latest = updateTarget(view);
+    if (state.authExpired || state.bootstrap?.user.role !== 'admin' || state.updateAttempt || state.updateCheck || updateActive(view) ||
+        latest?.tag !== target.tag || latest?.revision !== target.revision || view.revision !== fromRevision) {
+      throw new Error('版本或升级器状态已变化。请关闭弹窗后再确认。');
+    }
+    const attempt = { ...target, previousStatusAt: view.operation?.updated_at, submitting: true, until: Date.now() + 90000 };
+    state.updateAttempt = attempt;
+    state.updateError = '';
+    renderUpdates();
     try {
       await api('/admin/updates/install', { method: 'POST', body: { tag: target.tag, revision: target.revision } });
-      state.updateAckUntil = Date.now() + 4000;
-    } catch (error) { toast(error.message); }
-    finally { state.updateSubmitting = false; await refreshUpdates(); }
+    } catch (error) {
+      if (state.authExpired) return;
+      // A lost response can follow acceptance. Observe the existing request rather than submitting again.
+      if (error.status >= 400 && error.status < 500) {
+        state.updateAttempt = null;
+        throw error;
+      }
+    } finally {
+      attempt.submitting = false;
+      void refreshUpdates();
+      if (!state.authExpired && !state.updateReloading) renderUpdates();
+    }
   }
   function renderProbeList() {
     const names = [...new Set(state.probes.map(probe => probe.name))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
@@ -850,7 +961,29 @@ if (location.search) history.replaceState(null, '', location.pathname + location
     filter.innerHTML = '<option value="">全部名称</option>' + names.map(name => '<option value="' + html(name) + '">' + html(name) + '</option>').join('');
     filter.value = state.probeNameFilter;
     const probes = state.probes.filter(probe => !filter.value || probe.name === filter.value);
-    $('probeList').innerHTML = probes.length ? `<div class="probe-list">${probes.map((probe) => `<div class="probe-row"><div class="probe-info"><span class="probe-name">${html(probe.name)}</span><span class="probe-sub">${html(probe.group_name)}</span><span class="probe-sub">每 ${integer(probe.interval_minutes)} 分钟</span></div><div class="probe-info"><span class="probe-model">${html(probe.model)}</span><span class="probe-sub">${probe.kind === 'drawing' ? '图片检测' : '答题检测'} · ${html(probe.effort || 'default')}</span>${probe.enabled && probe.next_run_at ? `<span class="probe-sub">下次 ${html(time(probe.next_run_at))}</span>` : ''}<div class="probe-run-state" data-probe-state="${html(probe.id)}"></div></div><span class="status-pill ${probe.enabled ? 'enabled' : 'disabled'}">${probe.enabled ? '已启用' : '已暂停'}</span><div class="probe-actions"><button class="button secondary small" data-action="probe-run" data-id="${html(probe.id)}" ${probe.has_key ? '' : 'disabled'}>运行</button><button class="button secondary small" data-action="probe-edit" data-id="${html(probe.id)}">编辑</button><button class="button ghost small" data-action="probe-toggle" data-id="${html(probe.id)}">${probe.enabled ? '暂停' : '启用'}</button><button class="button ghost small" data-action="probe-delete" data-id="${html(probe.id)}">删除</button></div></div>`).join('')}</div>` : empty('暂无探测配置');
+    const nameKey = (name) => (name || '').replace(/\s+/g, '');
+    $('probeList').innerHTML = probes.length ? `<div class="probe-list">${probes.map((probe) => {
+      const id = html(probe.id);
+      const group = probe.group_name && nameKey(probe.group_name) !== nameKey(probe.name) ? `<span>${html(probe.group_name)}</span>` : '';
+      const next = probe.enabled && probe.next_run_at ? `<span>下次 ${html(time(probe.next_run_at))}</span>` : '';
+      return `<article class="probe-row">
+        <div class="probe-info">
+          <div class="probe-heading"><h3 class="probe-name">${html(probe.name)}</h3><span class="status-pill ${probe.enabled ? 'enabled' : 'disabled'}">${probe.enabled ? '已启用' : '已暂停'}</span></div>
+          <div class="probe-meta">${group}<span>每 ${integer(probe.interval_minutes)} 分钟</span>${next}</div>
+        </div>
+        <div class="probe-info probe-model-info">
+          <span class="probe-model">${html(probe.model)}</span>
+          <div class="probe-meta"><span>${probe.kind === 'drawing' ? '绘图' : '答题'}</span><span class="model-effort">${html(probe.effort || 'default')}</span></div>
+          <div class="probe-run-state" data-probe-state="${id}"></div>
+        </div>
+        <div class="probe-actions">
+          <button class="button secondary small" data-action="probe-run" data-id="${id}" ${probe.has_key ? '' : 'disabled'}>运行</button>
+          <button class="button ghost small" data-action="probe-edit" data-id="${id}">编辑</button>
+          <button class="button ghost small" data-action="probe-toggle" data-id="${id}">${probe.enabled ? '暂停' : '启用'}</button>
+          <button class="button ghost small record-delete" data-action="probe-delete" data-id="${id}">删除</button>
+        </div>
+      </article>`;
+    }).join('')}</div>` : empty('暂无探测配置');
     syncTestButtons();
   }
   function editProbe(id) {
@@ -1083,15 +1216,16 @@ if (location.search) history.replaceState(null, '', location.pathname + location
   $('refreshTraffic').addEventListener('click', loadTraffic);
   $('refreshMine').addEventListener('click', loadMine);
   $('refreshArtworks').addEventListener('click', loadArtworks);
-  $('releaseBadge').addEventListener('click', () => { selectTab('admin'); $('checkUpdates').focus(); });
-  $('checkUpdates').addEventListener('click', checkUpdates);
-  $('installUpdate').addEventListener('click', installUpdate);
-  $('reloadUpdate').addEventListener('click', () => location.reload());
+  $('updateAction').addEventListener('click', updateAction);
   $('refreshProbes').addEventListener('click', loadProbes);
   $('probeNameFilter').addEventListener('change', event => { state.probeNameFilter = event.target.value; renderProbeList(); });
   $('newProbe').addEventListener('click', () => editProbe(null));
   $('testForm').addEventListener('submit', submitTest);
   $('probeForm').addEventListener('submit', saveProbe);
+  $('probeForm').addEventListener('invalid', (event) => {
+    const advanced = event.target.closest('details.advanced');
+    if (advanced) advanced.open = true;
+  }, true);
   $('cancelRun').addEventListener('click', cancelRun);
   $('confirmSubmit').addEventListener('click', submitConfirmation);
   formField($('probeForm'), 'group_id').addEventListener('change', () => { defaultProbeName(); loadProbeModels(''); });
@@ -1108,7 +1242,13 @@ if (location.search) history.replaceState(null, '', location.pathname + location
   document.addEventListener('visibilitychange', syncPreviews);
   window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener('change', rebuildPreviewFrames);
   window.addEventListener('geekpulse-themechange', rebuildPreviewFrames);
-  window.addEventListener('pageshow', event => { state.pageHidden = false; if (event.persisted) refreshUpdates(); });
+  window.addEventListener('pageshow', event => {
+    state.pageHidden = false;
+    if (event.persisted && !state.authExpired) {
+      if (state.updateReloading) window.location.reload();
+      else refreshUpdates();
+    }
+  });
   window.addEventListener('pagehide', () => { state.pageHidden = true; clearTimeout(state.updateTimer); stopPolling(true); previewObserver?.disconnect(); previewResizeObserver?.disconnect(); for (const preview of previews.values()) preview.frame?.remove(); previews.clear(); });
   window.addEventListener('storage', (event) => {
     if (!['auth_token', 'auth_user', 'refresh_token'].includes(event.key)) return;
@@ -1144,7 +1284,7 @@ if (location.search) history.replaceState(null, '', location.pathname + location
       await restorePendingRequest();
       assertSession(epoch, original);
       $('workspace').hidden = false; $('initialLoading').hidden = true;
-      if (state.bootstrap.user.role === 'admin') refreshUpdates();
+      if (state.bootstrap.user.role === 'admin') { renderUpdates(); refreshUpdates(); }
       await Promise.all([loadDashboard(), loadTraffic()]);
     } catch (error) { if (!state.authExpired) { $('initialLoading').hidden = true; notice(error.message + ' 请刷新页面重试。'); } }
   }
