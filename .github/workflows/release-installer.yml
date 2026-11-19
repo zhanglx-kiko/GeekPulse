@@ -59,6 +59,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          CI_READ_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           sudo apt-get update -q
@@ -83,7 +84,13 @@ jobs:
           sudo systemctl enable --now nginx
           sudo systemctl reload nginx
           curl -fL --proto '=https' --proto-redir '=https' -o geekpulse-install.sh "https://github.com/$GH_REPO/releases/latest/download/geekpulse-install.sh"
-          printf '%s\n' gateway.example.com:8443 18080 y | sudo bash geekpulse-install.sh
+          # CI runners share anonymous API quota. Scope the job's read token to api.github.com only.
+          ci_curl=$(mktemp -d)
+          trap 'rm -f -- "$ci_curl/netrc" "$ci_curl/.curlrc"; rmdir -- "$ci_curl"' EXIT
+          (umask 077; printf 'machine api.github.com login x-access-token password %s\n' "$CI_READ_TOKEN" > "$ci_curl/netrc"
+           printf 'netrc-file = "%s/netrc"\nnetrc-optional\n' "$ci_curl" > "$ci_curl/.curlrc")
+          unset CI_READ_TOKEN
+          printf '%s\n' gateway.example.com:8443 18080 y | sudo env CURL_HOME="$ci_curl" bash geekpulse-install.sh
           sudo sed -i '/server_name gateway.example.com;/a\    include /etc/geekpulse/nginx-location.conf;' /etc/nginx/conf.d/geekpulse-ci.conf
           sudo nginx -t && sudo systemctl reload nginx
           for unit in geekpulse geekpulse-updater; do systemctl is-active --quiet "$unit"; done
