@@ -53,3 +53,5 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8091/model-lab/api/bo
 SQLite 数据库在 `/var/lib/geekpulse/lab.sqlite3`，加密托管 API Key 的主密钥在 `/etc/geekpulse/master.key`。备份活库时使用 SQLite 的备份工具；主密钥单独保管，不要放进 Git。
 
 后续有新版本，管理员在「探测管理 → 版本更新」点「升级」即可，不必再运行安装脚本。
+
+自 v1.0.1 起，安装脚本内包含完整的 MIT 许可声明；新装或升级后可在 `/opt/geekpulse/current/web/license.html` 查阅。

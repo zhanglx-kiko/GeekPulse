@@ -5,6 +5,7 @@ site_groups.py
 site_config.py
 release_updates.py
 web/index.html
+web/license.html
 web/app.js
 web/styles.css
 web/theme.js

@@ -2,7 +2,7 @@
 
 同源入口 `/model-lab/`，API 前缀 `/model-lab/api`。沿用 Sub2API 登录 Bearer，服务端校验用户和管理员权限。所有响应直接返回 JSON，无 data 外层。错误 `{error:{code,message}}`。毫秒为时长单位，时间为 UTC ISO8601，缺少指标用 null。24h、`hours=1|24`、最近 60 轮及 30h 保留均按 `created_at` 归窗/排序，不按完成时间；平均耗时取窗口内终态记录已知的 `duration_ms`，不只限正确答题，未知值不填 0。
 
-此契约对应 GeekPulse 1.0.0，适配目标是 Sub2API `v0.2.23`。站点设置见[部署说明](deployment.md)。
+此契约对应 GeekPulse 1.0.1，适配目标是 Sub2API `v0.2.23`。站点设置见[部署说明](deployment.md)。
 
 ## 页面与用户
 

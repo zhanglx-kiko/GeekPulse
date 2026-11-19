@@ -1,5 +1,6 @@
 """First-install wizard against an isolated layout. No host services, package downloads or model calls."""
 import contextlib
+import html
 import io
 import os
 from pathlib import Path
@@ -14,6 +15,18 @@ from deploy import first_install as setup
 
 SHA = 'a' * 40
 SITE = setup.site_settings('gateway.example.com', '')
+
+
+class ReleaseNoticeTests(unittest.TestCase):
+    def test_installer_and_runtime_include_the_complete_mit_notice(self):
+        root = Path(__file__).resolve().parents[1]
+        license_text = (root / 'LICENSE').read_text(encoding='utf-8')
+        comment = '\n'.join('# ' + line if line else '#' for line in license_text.splitlines()) + '\n'
+        self.assertIn(comment, (root / 'deploy/geekpulse-install.sh').read_text(encoding='utf-8'))
+        manifest = (root / 'deploy/runtime-files.txt').read_text(encoding='ascii').splitlines()
+        self.assertIn('web/license.html', manifest)
+        page = (root / 'web/license.html').read_text(encoding='utf-8')
+        self.assertEqual(html.unescape(page.partition('<pre>')[2].partition('</pre>')[0]), license_text)
 
 
 class FirstInstallTests(unittest.TestCase):
