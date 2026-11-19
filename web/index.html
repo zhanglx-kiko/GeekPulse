@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#f9fafb">
+  <title>模型实验室 · ${site_name}</title>
+  <link rel="icon" href="${logo_path}">
+  <script src="./theme.js"></script>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+  <div class="app-shell">
+    <header class="app-header">
+      <a class="brand" href="/dashboard" aria-label="返回站点控制台"><img class="brand-icon" src="${logo_path}" alt="" width="36" height="36"><span>${site_name}</span></a>
+      <div class="header-right"><span id="userName" class="user-name"></span><a class="quiet-link" href="/dashboard">返回控制台 <span aria-hidden="true">↗</span></a></div>
+    </header>
+    <main>
+      <div class="page-heading"><h1>模型实验室</h1></div>
+      <div id="globalNotice" class="notice" role="status" hidden></div>
+      <section id="authGate" class="auth-gate card" hidden><span class="empty-symbol" aria-hidden="true">⌁</span><h2>请先登录</h2><p id="authMessage">使用当前站点账号进入模型实验室。</p><a class="button primary" href="/login">返回登录</a></section>
+      <div id="workspace" hidden>
+        <button id="releaseBadge" class="button secondary small" type="button" hidden></button>
+        <nav class="tabs" role="tablist" aria-label="实验室功能">
+          <button class="tab active" role="tab" aria-selected="true" aria-controls="panel-overview" id="tab-overview" data-tab="overview">分组概览</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="panel-test" id="tab-test" data-tab="test" tabindex="-1">自助测试</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="panel-artworks" id="tab-artworks" data-tab="artworks" tabindex="-1">绘图记录</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="panel-admin" id="tab-admin" data-tab="admin" tabindex="-1" hidden>探测管理</button>
+        </nav>
+        <section id="panel-overview" class="panel" role="tabpanel" aria-labelledby="tab-overview">
+          <details id="trafficSection" class="traffic-section" hidden><summary><span>站内实际流量</span><span id="trafficStatus" class="muted">近 24 小时</span></summary><div class="traffic-body"><div class="card-heading"><p id="trafficUpdatedAt">近 24 小时</p><button id="refreshTraffic" class="button ghost small">刷新</button></div><div id="trafficContent"></div></div></details>
+          <h2 class="probe-overview-title">监控概览</h2>
+          <div class="section-toolbar"><div class="toolbar-description"><span class="live-mark" aria-hidden="true"></span><span id="updatedAt">尚未加载</span></div><div class="toolbar-actions"><label class="overview-filter">监控分组<select id="groupFilter"><option value="all">全部监控分组</option></select></label><div class="segmented" aria-label="渠道指标统计时间范围"><button class="selected" data-hours="1" aria-pressed="true">近 1 小时</button><button data-hours="24" aria-pressed="false">近 24 小时</button></div><button id="refreshDashboard" class="button secondary small">刷新数据</button></div></div>
+          <p id="summaryScope" class="overview-scope">全部监控分组 · 近 24 小时答题</p>
+          <div id="summaryGrid" class="summary-grid"></div>
+          <div class="legend"><span><i class="dot passed"></i>不降智</span><span><i class="dot failed"></i>降智</span><span><i class="dot completed"></i>未评分</span></div>
+          <div id="groupGrid" class="group-grid" aria-live="polite"></div>
+        </section>
+        <section id="panel-test" class="panel" role="tabpanel" aria-labelledby="tab-test" hidden>
+          <div class="test-layout">
+            <form id="testForm" class="card test-form" autocomplete="off">
+              <div class="card-heading"><h2>发起测试</h2></div>
+              <div class="form-grid">
+                <label class="field full">接口地址<input name="base_url" type="url" placeholder="https://api.example.com/v1" required><span class="field-hint">公网 HTTPS 地址</span></label>
+                <label class="field full">API 密钥<input name="api_key" type="password" autocomplete="new-password" placeholder="输入本次测试使用的密钥" required spellcheck="false"><span class="field-hint">仅用于本次任务，不保存。</span></label>
+                <label class="field full">模型<input name="model" placeholder="输入模型名称" required spellcheck="false" aria-describedby="testEffortHint"><span id="testEffortHint" class="field-hint" aria-live="polite" hidden></span></label>
+                <label class="field">测试类型<select name="kind"><option value="reasoning">答题测试</option><option value="drawing">绘图测试</option></select></label>
+                <label class="field">测试预设<select name="preset_id"></select></label>
+                <label class="field full prompt-field" hidden>提示词<textarea name="prompt" rows="5" placeholder="输入测试提示词"></textarea></label>
+                <label class="field full expected-field" hidden>预期答案<input name="expected_answer" placeholder="可选：填写预期答案"></label>
+              </div>
+              <details class="advanced"><summary>高级参数</summary><div class="form-grid">
+                <label class="field">接口协议<select name="protocol"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select></label>
+                <label class="field">推理强度<select name="effort"><option value="">默认</option><option value="none" selected>无</option><option value="minimal">最低</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="xhigh">极高</option><option value="max">最大</option></select></label>
+                <label class="field">最大输出 Token<input name="max_output_tokens" type="number" min="64" max="32768" value="64" required><span class="field-hint">部分上游会忽略此上限，实际用量以返回值为准。</span></label>
+                <label class="field">超时（秒）<input name="timeout_seconds" type="number" min="30" max="900" value="900" required></label>
+              </div></details>
+              <label class="check-field"><input name="publish" type="checkbox"><span>公开本次结果</span></label>
+              <p class="field-hint billing-note">测试会调用所填上游并可能产生费用。</p>
+              <p id="testError" class="form-error" role="alert" hidden></p>
+              <button id="submitTest" class="button primary full-button" type="submit">开始测试 <span aria-hidden="true">↗</span></button>
+            </form>
+            <div class="test-results"><section class="card result-card"><div class="card-heading"><h2>测试结果</h2><button id="cancelRun" class="button danger small" hidden>取消任务</button></div><div id="currentResult" aria-live="polite"><div class="empty-state"><span class="empty-symbol" aria-hidden="true">⌁</span><h3>暂无测试结果</h3></div></div></section><section class="card"><div class="card-heading"><h2>最近答题测试</h2><button id="refreshMine" class="button ghost small">刷新</button></div><div id="myRuns"></div></section></div>
+          </div>
+        </section>
+        <section id="panel-artworks" class="panel" role="tabpanel" aria-labelledby="tab-artworks" hidden>
+          <div class="section-toolbar"><h2>绘图作品</h2><div class="toolbar-actions"><div class="segmented" aria-label="作品范围"><button class="selected" data-scope="mine" aria-pressed="true">我的作品</button><button data-scope="public" aria-pressed="false">公开作品</button></div><button id="refreshArtworks" class="button secondary small">刷新</button></div></div>
+          <div id="artworkGrid" class="artwork-grid"></div>
+        </section>
+        <section id="panel-admin" class="panel" role="tabpanel" aria-labelledby="tab-admin" hidden>
+          <div class="section-toolbar"><div><h2>探测配置</h2></div><div class="toolbar-actions"><label class="overview-filter">探测名称 <select id="probeNameFilter"><option value="">全部名称</option></select></label><button id="refreshProbes" class="button secondary small">刷新</button><button id="newProbe" class="button primary small">＋ 新建探测</button></div></div><div id="probeList"></div>
+          <section class="card update-card" aria-labelledby="updateTitle"><div class="section-toolbar"><h2 id="updateTitle">版本更新</h2><div class="toolbar-actions"><button id="checkUpdates" type="button" class="button secondary small">检查更新</button><button id="installUpdate" type="button" class="button primary small" hidden>升级</button><button id="reloadUpdate" type="button" class="button secondary small" hidden>载入新版页面</button></div></div><p id="updateStatus" class="field-hint" role="status"></p></section>
+        </section>
+      </div>
+      <div id="initialLoading" class="initial-loading" role="status"><span class="spinner"></span><span>正在连接实验室…</span></div>
+    </main>
+    <footer class="app-footer"><span>${site_name} · 模型实验室</span><span id="versionLabel"></span></footer>
+  </div>
+  <dialog id="detailDialog" class="modal wide-modal" aria-labelledby="detailTitle"><div class="modal-head"><div class="modal-title-group"><button id="detailBack" class="button ghost small" data-action="detail-back" hidden>← 返回历史</button><h2 id="detailTitle">测试详情</h2></div><button class="icon-button" data-close aria-label="关闭详情">×</button></div><div id="detailContent" class="modal-body"></div></dialog>
+  <dialog id="historyDialog" class="modal history-modal" aria-labelledby="historyTitle"><div class="modal-head"><h2 id="historyTitle">运行历史</h2><button class="icon-button" data-close aria-label="关闭历史">×</button></div><div id="historyContent" class="modal-body"></div></dialog>
+  <dialog id="probeDialog" class="modal" aria-labelledby="probeTitle"><form id="probeForm" autocomplete="off"><div class="modal-head"><h2 id="probeTitle">新建探测</h2><button class="icon-button" type="button" data-close aria-label="关闭配置">×</button></div><div class="modal-body"><div class="form-grid">
+    <label class="field">分组<select name="group_id" required></select></label><label class="field">探测名称<input name="name" maxlength="200" placeholder="默认使用分组名称" required></label>
+    <label class="field full">模型<select name="model" required disabled aria-describedby="probeModelHint probeEffortHint"><option value="">请先选择分组</option></select><span class="probe-model-status"><span id="probeModelHint" class="field-hint" aria-live="polite">选择分组后加载模型</span><button id="retryProbeModels" class="button ghost small" type="button" hidden>重试</button></span><span id="probeEffortHint" class="field-hint" aria-live="polite" hidden></span></label>
+    <label class="field">测试类型<select name="kind"><option value="reasoning">答题测试</option><option value="drawing">绘图测试</option></select></label><label class="field">测试预设<select name="preset_id"></select></label>
+    <label class="field full prompt-field" hidden>提示词<textarea name="prompt" rows="4" placeholder="输入测试提示词"></textarea></label><label class="field full expected-field" hidden>预期答案<input name="expected_answer" placeholder="可选：填写预期答案"></label>
+    <label class="field full">运行间隔（分钟）<input name="interval_minutes" type="number" min="5" max="10080" value="60" required></label>
+    <details class="advanced full"><summary>高级参数与价格</summary><div class="form-grid">
+      <label class="field">接口协议<select name="protocol"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select></label><label class="field">推理强度<select name="effort"><option value="">默认</option><option value="none" selected>无</option><option value="minimal">最低</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="xhigh">极高</option><option value="max">最大</option></select></label>
+      <label class="field">最大输出 Token<input name="max_output_tokens" type="number" min="64" max="32768" value="64" required><span class="field-hint">部分上游会忽略此上限，实际用量以返回值为准。</span></label><label class="field">超时（秒）<input name="timeout_seconds" type="number" min="30" max="900" value="900" required></label>
+      <label class="field full">展示倍率（可选）<input name="display_multiplier" type="number" min="0" step="any" placeholder="使用分组基础倍率"><span class="field-hint">留空使用分组基础倍率，仅展示，不改计费。</span></label>
+      <div class="field full price-fields"><span class="label-text">价格 <small>USD / 百万 Token，可选</small></span><div class="price-grid"><label class="field">输入<input name="input_price" type="number" min="0" step="any" placeholder="未设置"></label><label class="field">缓存输入<input name="cached_price" type="number" min="0" step="any" placeholder="未设置"></label><label class="field">输出<input name="output_price" type="number" min="0" step="any" placeholder="未设置"></label></div></div>
+    </div></details>
+    <label class="check-field full"><input name="enabled" type="checkbox"><span>启用定时探测</span></label><label class="check-field full"><input name="publish" type="checkbox"><span>向分组用户公开结果</span></label>
+  </div><p id="probeError" class="form-error" role="alert" hidden></p></div><div class="modal-actions"><button class="button secondary" type="button" data-close>取消</button><button id="saveProbe" class="button primary" type="submit">保存配置</button></div></form></dialog>
+  <dialog id="confirmDialog" class="modal confirm-modal" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmDescription confirmObject">
+    <div class="confirm-content">
+      <div class="confirm-icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></div>
+      <h2 id="confirmTitle">确认删除</h2>
+      <p id="confirmDescription" class="confirm-description"></p>
+      <div id="confirmObject" class="confirm-object"><strong id="confirmName"></strong><span id="confirmMeta"></span></div>
+      <p id="confirmError" class="form-error" role="alert" hidden></p>
+    </div>
+    <div class="modal-actions confirm-actions"><button id="confirmCancel" class="button secondary" type="button" data-close autofocus>取消</button><button id="confirmSubmit" class="button danger-solid" type="button">删除</button></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

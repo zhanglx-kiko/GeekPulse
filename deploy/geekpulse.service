@@ -1,0 +1,32 @@
+[Unit]
+Description=GeekPulse model monitoring for Sub2API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=geekpulse
+Group=geekpulse
+WorkingDirectory=/opt/geekpulse/current
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=/etc/geekpulse/geekpulse.env
+ExecStart=/opt/geekpulse/.venv/bin/python -u /opt/geekpulse/current/server.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=25
+UMask=0077
+StateDirectory=geekpulse
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+LimitNOFILE=1024
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

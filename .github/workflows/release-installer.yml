@@ -1,0 +1,86 @@
+name: Publish and test the installer
+on:
+  release:
+    types: [published]
+jobs:
+  installer:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.event.release.tag_name }}
+      REVISION: ${{ github.sha }}
+    steps:
+      - name: Attach the script from this release commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]]
+          gh api --method GET -H 'Accept: application/vnd.github.raw+json' "repos/$GH_REPO/contents/deploy/geekpulse-install.sh" -f ref="$REVISION" > geekpulse-install.sh
+          bash -n geekpulse-install.sh
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq geekpulse-install.sh; then
+            mkdir existing
+            gh release download "$TAG" --pattern geekpulse-install.sh --dir existing
+            cmp geekpulse-install.sh existing/geekpulse-install.sh
+          else
+            gh release upload "$TAG" geekpulse-install.sh
+          fi
+
+  first-install:
+    needs: installer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check whether this release is Latest
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)
+          if [[ "$latest" == "$TAG" ]]; then echo 'latest=true' >> "$GITHUB_OUTPUT"; fi
+      - name: Install on a clean systemd host
+        if: steps.release.outputs.latest == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -y -q nginx python3-venv
+          # Only the anonymous gateway response is needed; this host has no model credentials.
+          sudo openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -subj '/CN=gateway.example.com' -addext 'subjectAltName=DNS:gateway.example.com' \
+            -keyout /etc/nginx/geekpulse-ci.key -out /etc/nginx/geekpulse-ci.crt 2>/dev/null
+          sudo tee /etc/nginx/conf.d/geekpulse-ci.conf >/dev/null <<'NGINX'
+          server {
+              listen 127.0.0.1:18080;
+              location = /api/v1/auth/me { return 401; }
+          }
+          server {
+              listen 127.0.0.1:8443 ssl;
+              server_name gateway.example.com;
+              ssl_certificate /etc/nginx/geekpulse-ci.crt;
+              ssl_certificate_key /etc/nginx/geekpulse-ci.key;
+          }
+          NGINX
+          sudo nginx -t
+          sudo systemctl enable --now nginx
+          sudo systemctl reload nginx
+          curl -fL --proto '=https' --proto-redir '=https' -o geekpulse-install.sh "https://github.com/$GH_REPO/releases/latest/download/geekpulse-install.sh"
+          printf '%s\n' gateway.example.com:8443 18080 | sudo bash geekpulse-install.sh --check
+          printf '%s\n' gateway.example.com:8443 18080 y | sudo bash geekpulse-install.sh
+          sudo sed -i '/server_name gateway.example.com;/a\    include /etc/geekpulse/nginx-location.conf;' /etc/nginx/conf.d/geekpulse-ci.conf
+          sudo nginx -t && sudo systemctl reload nginx
+          for unit in geekpulse geekpulse-updater; do systemctl is-active --quiet "$unit"; done
+          client=(curl -sS --noproxy '*' --cacert /etc/nginx/geekpulse-ci.crt --resolve gateway.example.com:8443:127.0.0.1)
+          origin=https://gateway.example.com:8443/model-lab
+          "${client[@]}" -f "$origin/api/health" | jq -e --arg sha "$GITHUB_SHA" --arg ver "${TAG#v}" '.status == "ok" and .version == $ver and .revision == $sha'
+          test "$("${client[@]}" -o /dev/null -w '%{http_code}' "$origin/api/bootstrap")" = 401
+          test "$("${client[@]}" -o /dev/null -w '%{http_code}' "$origin/")" = 200
+          test "$(cat /var/lib/geekpulse-updater/managed-revision)" = "$GITHUB_SHA"

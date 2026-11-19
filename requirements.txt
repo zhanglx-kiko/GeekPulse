@@ -1,0 +1,2 @@
+# Runtime dependency for Fernet. Node is only used by the frontend tests.
+cryptography>=50.0.1,<51
