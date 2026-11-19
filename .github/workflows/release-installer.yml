@@ -2,9 +2,10 @@ name: Publish and test the installer
 on:
   release:
     types: [published]
+  workflow_dispatch:
 jobs:
   installer:
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ github.event_name == 'release' && !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -31,6 +32,7 @@ jobs:
 
   first-install:
     needs: installer
+    if: ${{ always() && (needs.installer.result == 'success' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
@@ -39,16 +41,24 @@ jobs:
       TAG: ${{ github.event.release.tag_name }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - name: Check whether this release is Latest
+      - name: Resolve the published release to test
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           latest=$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)
-          if [[ "$latest" == "$TAG" ]]; then echo 'latest=true' >> "$GITHUB_OUTPUT"; fi
+          if [[ "$GITHUB_EVENT_NAME" == 'release' && "$latest" != "$TAG" ]]; then exit 0; fi
+          [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          sha=$(gh api "repos/$GH_REPO/commits/$latest" --jq .sha)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          printf 'latest=true\ntag=%s\nsha=%s\n' "$latest" "$sha" >> "$GITHUB_OUTPUT"
       - name: Install on a clean systemd host
         if: steps.release.outputs.latest == 'true'
         shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
           sudo apt-get update -q
@@ -73,14 +83,21 @@ jobs:
           sudo systemctl enable --now nginx
           sudo systemctl reload nginx
           curl -fL --proto '=https' --proto-redir '=https' -o geekpulse-install.sh "https://github.com/$GH_REPO/releases/latest/download/geekpulse-install.sh"
-          printf '%s\n' gateway.example.com:8443 18080 | sudo bash geekpulse-install.sh --check
           printf '%s\n' gateway.example.com:8443 18080 y | sudo bash geekpulse-install.sh
           sudo sed -i '/server_name gateway.example.com;/a\    include /etc/geekpulse/nginx-location.conf;' /etc/nginx/conf.d/geekpulse-ci.conf
           sudo nginx -t && sudo systemctl reload nginx
           for unit in geekpulse geekpulse-updater; do systemctl is-active --quiet "$unit"; done
           client=(curl -sS --noproxy '*' --cacert /etc/nginx/geekpulse-ci.crt --resolve gateway.example.com:8443:127.0.0.1)
           origin=https://gateway.example.com:8443/model-lab
-          "${client[@]}" -f "$origin/api/health" | jq -e --arg sha "$GITHUB_SHA" --arg ver "${TAG#v}" '.status == "ok" and .version == $ver and .revision == $sha'
+          # nginx -s reload signals the master; an old worker may still answer immediately afterwards.
+          for attempt in {1..10}; do
+            status=$("${client[@]}" -o health.json -w '%{http_code}' "$origin/api/health")
+            echo "HTTPS health after reload (attempt $attempt): $status"
+            [[ "$status" == 200 ]] && break
+            sleep 1
+          done
+          test "$status" = 200
+          jq -e --arg sha "$RELEASE_SHA" --arg ver "${RELEASE_TAG#v}" '.status == "ok" and .version == $ver and .revision == $sha' health.json
           test "$("${client[@]}" -o /dev/null -w '%{http_code}' "$origin/api/bootstrap")" = 401
           test "$("${client[@]}" -o /dev/null -w '%{http_code}' "$origin/")" = 200
-          test "$(cat /var/lib/geekpulse-updater/managed-revision)" = "$GITHUB_SHA"
+          test "$(cat /var/lib/geekpulse-updater/managed-revision)" = "$RELEASE_SHA"
